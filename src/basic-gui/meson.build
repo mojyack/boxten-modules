@@ -11,7 +11,7 @@ boxten_dep = dependency('libboxten')
 qt_dep     = dependency('qt5', version: '>= 5.2', required: true, modules: ['Core', 'Widgets', 'Gui'])
 datadir    = prefix / get_option('datadir') / 'boxten' / module_name
 
-boxten_include = include_directories(join_paths(get_option('prefix'),'usr/include/libboxten'))
+boxten_include = include_directories(join_paths(prefix,'usr/include/libboxten'))
 install_dir    = prefix / 'lib/boxten-modules'
 
 config_data = configuration_data()

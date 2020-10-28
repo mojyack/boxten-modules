@@ -10,7 +10,7 @@ prefix      = get_option('prefix')
 alsa_dep   = dependency('alsa', version: '>= 1.0.16')
 boxten_dep = dependency('libboxten')
 
-boxten_include = include_directories(join_paths(get_option('prefix'),'usr/include/libboxten'))
+boxten_include = include_directories(join_paths(prefix,'usr/include/libboxten'))
 install_dir    = prefix / 'lib/boxten-modules'
 
 config_data = configuration_data()
