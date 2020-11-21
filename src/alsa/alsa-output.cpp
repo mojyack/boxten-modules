@@ -8,7 +8,7 @@
         break;                                 \
     }
 
-const snd_pcm_format_t AlsaOutput::convert_alsa_format() {
+snd_pcm_format_t AlsaOutput::convert_alsa_format() {
     static const struct {
         boxten::FORMAT_SAMPLE_TYPE boxten_format;
         snd_pcm_format_t           alsa_format;
@@ -49,7 +49,7 @@ bool AlsaOutput::init_alsa_device() {
     snd_pcm_uframes_t buffer_size     = BUFFER_SIZE;
     snd_pcm_uframes_t period_size     = boxten::PCMPACKET_PERIOD;
     do {
-        error = snd_pcm_open(&playback_handle, DEVICE_NAME, SND_PCM_STREAM_PLAYBACK, 0);
+        error = snd_pcm_open(&playback_handle.data, DEVICE_NAME, SND_PCM_STREAM_PLAYBACK, 0);
         TEST_ERROR("cannot open audio device %s (%s)\n", DEVICE_NAME, snd_strerror(error));
 
         error = snd_pcm_hw_params_malloc(&hw_params);
@@ -142,7 +142,7 @@ void AlsaOutput::write_pcm_data() {
     int error;
     snd_pcm_sframes_t frames_to_deliver;
     while(!exit_loop) {
-        std::lock_guard<std::mutex> lock(playback_handle_lock);
+        std::lock_guard<std::mutex> lock(playback_handle.lock);
         if(playback_handle == nullptr){
             auto next_format = get_buffer_pcm_format();
             if(next_format.sample_type == boxten::FORMAT_SAMPLE_TYPE::UNKNOWN) continue;
@@ -159,7 +159,7 @@ void AlsaOutput::write_pcm_data() {
             snd_pcm_sframes_t delay;
             error = snd_pcm_delay(playback_handle, &delay);
             TEST_ERROR("snd_pcm_delay failed (%s)\n", strerror(errno));
-            std::lock_guard<std::mutex> clock(calced_delay_lock);
+            std::lock_guard<std::mutex> clock(calced_delay.lock);
             calced_delay = delay;
         }
         frames_to_deliver = snd_pcm_avail_update(playback_handle);
@@ -191,7 +191,7 @@ void AlsaOutput::write_pcm_data() {
     boxten::stop_playback();
 }
 boxten::n_frames AlsaOutput::output_delay() {
-    std::lock_guard<std::mutex> lock(calced_delay_lock);
+    std::lock_guard<std::mutex> lock(calced_delay.lock);
     return calced_delay;
 }
 void AlsaOutput::start_playback(){
@@ -203,7 +203,7 @@ void AlsaOutput::stop_playback() {
     exit_loop = true;
     
     loop.join();
-    std::lock_guard<std::mutex> lock(playback_handle_lock);
+    std::lock_guard<std::mutex> lock(playback_handle.lock);
     close_alsa_device();
 }
 void AlsaOutput::pause_playback() {
@@ -213,9 +213,7 @@ void AlsaOutput::resume_playback() {
     snd_pcm_pause(playback_handle, 0);
 }
 
-BOXTEN_MODULE({"ALSA output", boxten::COMPONENT_TYPE::STREAM_OUTPUT, CATALOGUE_CALLBACK(AlsaOutput)});
-
-//std::copy(p.pcm.begin(), p.pcm.end(), std::back_inserter(raw));
+BOXTEN_MODULE({"ALSA output", boxten::COMPONENT_TYPE::STREAM_OUTPUT, CATALOGUE_CALLBACK(AlsaOutput)})
 
 /*
             std::vector<i16> cnv(p.pcm.size() / p.format.get_bytewidth());

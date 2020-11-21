@@ -188,4 +188,4 @@ boxten::n_frames WavInput::calc_total_frames(boxten::AudioFile& file){
     return pcm_info->total_frames;
 }
 
-BOXTEN_MODULE({"Wav input", boxten::COMPONENT_TYPE::STREAM_INPUT, CATALOGUE_CALLBACK(WavInput)});
+BOXTEN_MODULE({"Wav input", boxten::COMPONENT_TYPE::STREAM_INPUT, CATALOGUE_CALLBACK(WavInput)})

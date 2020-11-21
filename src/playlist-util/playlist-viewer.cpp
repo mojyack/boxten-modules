@@ -17,10 +17,10 @@ class PlaylistViewerModel : public QAbstractTableModel {
     PlaylistViewerModel(Playlists& playlists);
     ~PlaylistViewerModel() {}
 };
-int PlaylistViewerModel::columnCount(const QModelIndex& parent) const {
+int PlaylistViewerModel::columnCount(const QModelIndex& /*parent*/) const {
     return 1;
 }
-int PlaylistViewerModel::rowCount(const QModelIndex& parent) const {
+int PlaylistViewerModel::rowCount(const QModelIndex& /*parent*/) const {
     std::lock_guard<std::mutex> lock(playlists.lock);
     auto& playing = playlists.playing();
     std::lock_guard<std::mutex> plock(playing.mutex());
@@ -31,8 +31,10 @@ QVariant PlaylistViewerModel::data(const QModelIndex& index, int role) const {
         return QVariant();
     }
     switch(index.column()) {
-    case 0:
-        return index.row() + 1000;
+    case 0:{
+        std::lock_guard<std::mutex> lock(playlists.lock);
+        return 1;
+    }
     default:
         return QVariant();
     }
