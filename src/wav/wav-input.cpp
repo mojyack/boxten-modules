@@ -1,4 +1,5 @@
 #include "wav-input.hpp"
+#include "id3.hpp"
 
 namespace{
 struct FMT {
@@ -47,17 +48,17 @@ bool WavInput::read_pcm_info(std::ifstream& handle, PCMInfo& pcm_info){
                 format_chunk_found = true;
             } else if(std::strncmp(chunk_identifier, "data", 4) == 0) {
                 data_chunk_size   = chunk_limit;
-                pcm_info.data_pos = handle.tellg();
+                pcm_info.data_pos = current_pos;
                 data_chunk_found  = true;
             } else if(std::strncmp(chunk_identifier, "LIST", 4) == 0) {
-                u32  list_limit;
                 char list_type[4];
-                handle.read(reinterpret_cast<char*>(&list_limit), sizeof(u32));
                 handle.read(list_type, 4);
                 if(std::strncmp(list_type, "INFO", 4) == 0){
                     pcm_info.info_pos = handle.tellg();
-                    pcm_info.info_limit = list_limit - 4; // - 4 "INFO"
+                    pcm_info.info_limit = chunk_limit - 4; // - 4 "INFO"
                 }
+            } else if(std::strncmp(chunk_identifier, "id3 ", 4) == 0){
+                pcm_info.id3_pos = current_pos;
             }
 
             handle.seekg(current_pos, std::ios_base::beg);
@@ -146,7 +147,8 @@ boxten::AudioTag WavInput::read_tags(boxten::AudioFile& file) {
     auto             pcm_info = get_pcm_info(file);
     if(pcm_info == nullptr) return result;
     auto& handle = file.get_handle();
-    while(handle.tellg() < (pcm_info->info_pos + pcm_info->info_limit)){
+    handle.seekg(pcm_info->info_pos, std::ios_base::beg);
+    while(handle.tellg() < (pcm_info->info_pos + pcm_info->info_limit)) {
         char chunk_identifier[4];
         i32  chunk_limit;
         handle.read(chunk_identifier, 4);
@@ -172,14 +174,41 @@ boxten::AudioTag WavInput::read_tags(boxten::AudioFile& file) {
             {"ITRK", "TrackNumber"},
         };
         constexpr u64 tag_table_limit = sizeof(tag_table) / sizeof(tag_table[0]);
-        for(u64 i = 0; i < tag_table_limit;++i){
+        for(u64 i = 0; i < tag_table_limit; ++i) {
             if(std::strncmp(tag_table[i].tag_id, chunk_identifier, 4) == 0) {
                 std::string data(chunk_limit, '\0');
                 handle.read(&data[0], chunk_limit);
                 result[tag_table[i].tag_name] = data;
+                break;
             }
         }
         handle.seekg(next_chunk, std::ios_base::beg);
+    }
+    if(pcm_info->id3_pos != -1){
+        std::vector<ID3Tag> id3_tags;
+        handle.seekg(pcm_info->id3_pos, std::ios::beg);
+        read_id3(handle, id3_tags);
+        for(auto& r : id3_tags) {
+            struct {
+                const char* tag_id;
+                const char* tag_name;
+            } constexpr tag_table[] = {
+                {"TIT2", "Title"},
+                {"TRCK", "TrackNumber"},
+                {"TDRC", "DateCreated"},
+                {"TCOP", "Copyright"},
+                {"TPE1", "Artist"},
+                {"TALB", "Album"},
+            };
+            constexpr u64 tag_table_limit = sizeof(tag_table) / sizeof(tag_table[0]);
+            for(u64 i = 0; i < tag_table_limit; ++i) {
+                if(std::strncmp(tag_table[i].tag_id, r.first.data(), 4) == 0) {
+                    r.second.emplace_back('\0');
+                    result[tag_table[i].tag_name] = reinterpret_cast<char*>(r.second.data());
+                    break;
+                }
+            }
+        }
     }
     return result;
 }

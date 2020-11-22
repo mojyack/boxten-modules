@@ -16,6 +16,7 @@ struct PCMInfo {
 
     std::streampos             info_pos = -1;
     std::streamoff             info_limit;
+    std::streampos             id3_pos = -1;
 };
 
 class WavInput : public boxten::StreamInput {

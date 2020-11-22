@@ -20,7 +20,7 @@ configure_file( input : 'config.h.in',
 config_include = include_directories('.')
 
 shared_module(
-    'wav-input', ['wav-input.cpp'],
+    'wav-input', ['wav-input.cpp', 'unicode.cpp'],
     dependencies: [boxten_dep],
     include_directories: boxten_include,
     install: true,
