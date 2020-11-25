@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <vector>
 
-typedef std::vector<uint8_t> ByteArray;
+using ByteArray = std::vector<uint8_t>;
 enum class Endian {
     None,
     Big,
