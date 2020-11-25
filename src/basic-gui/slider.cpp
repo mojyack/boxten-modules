@@ -5,6 +5,9 @@
 
 #include "slider.hpp"
 
+#define INSTALL_HOOK(f, e) \
+    install_eventhook(std::bind(&f, this, std::placeholders::_1, std::placeholders::_2), boxten::Events::e);
+
 namespace{
 class Style : public QProxyStyle {
   public:
@@ -17,7 +20,7 @@ class Style : public QProxyStyle {
 };
 }
 
-void SeekSlider::update_range() {
+void SeekSlider::update_range(boxten::Events event, void* param) {
     setRange(0, boxten::get_playing_song_length());
 }
 void SeekSlider::update_loop() {
@@ -25,6 +28,16 @@ void SeekSlider::update_loop() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if(!is_slider_pressed) {
             setValue(boxten::get_playback_pos());
+        }
+    }
+}
+void SeekSlider::control_update_loop(boxten::Events event, void* param) {
+    if(event == boxten::Events::PLAYBACK_CHANGE){
+        auto state = reinterpret_cast<boxten::HookParameters::PlaybackChange*>(param)->new_state;
+        if(state == boxten::PlaybackState::PLAYING) {
+            start_update_loop();
+        } else {
+            exit_update_loop();
         }
     }
 }
@@ -53,16 +66,8 @@ SeekSlider::SeekSlider(void* param) : QSlider(Qt::Horizontal), boxten::Widget(pa
     connect(this, &QSlider::sliderPressed, this, &SeekSlider::slider_pressed);
     connect(this, &QSlider::sliderReleased, this, &SeekSlider::slider_released);
 
-    install_eventhook(std::bind(&SeekSlider::update_range, this),
-                      {boxten::EVENT::PLAYBACK_START,
-                       boxten::EVENT::SONG_CHANGE});
-    install_eventhook(std::bind(&SeekSlider::start_update_loop, this),
-                      {boxten::EVENT::PLAYBACK_START,
-                       boxten::EVENT::PLAYBACK_RESUME});
-    install_eventhook(std::bind(&SeekSlider::exit_update_loop, this),
-                      {boxten::EVENT::PLAYBACK_STOP,
-                       boxten::EVENT::PLAYBACK_PAUSE});
-
+    INSTALL_HOOK(SeekSlider::update_range, SONG_CHANGE);
+    INSTALL_HOOK(SeekSlider::control_update_loop, PLAYBACK_CHANGE);
     setSizePolicy(QSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed));
 }
 SeekSlider::~SeekSlider() {

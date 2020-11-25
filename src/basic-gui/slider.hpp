@@ -7,8 +7,9 @@ class SeekSlider : public QSlider, public boxten::Widget {
     bool           is_slider_pressed = false;
     bool           finish_update_loop;
     boxten::Worker update_loop_thread;
-    void           update_range();
+    void           update_range(boxten::Events event, void* param);
     void           update_loop();
+    void           control_update_loop(boxten::Events event, void* param);
     void           start_update_loop();
     void           exit_update_loop();
 

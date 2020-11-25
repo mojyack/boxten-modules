@@ -8,7 +8,7 @@
 
 
 struct Playlists{
-    u64                            playing_playlist = 0;
+    i64                            playing_playlist;
     std::vector<boxten::Playlist*> data;
     std::mutex                     lock;
 
