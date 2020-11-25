@@ -91,7 +91,9 @@ PlaylistViewer::PlaylistViewer(void* param) : boxten::Widget(param) {
     tag_config = {Tags::Title, Tags::Artist};
     auto model = new PlaylistViewerModel(playlists, tag_config);
     install_eventhook(std::bind(&PlaylistViewerModel::playing_song_change_hook, model, std::placeholders::_1, std::placeholders::_2), boxten::Events::SONG_CHANGE);
-
+    QObject::connect(this, &PlaylistViewer::doubleClicked, [&](const QModelIndex& index) {
+        boxten::change_song_abs(index.row());
+    });
     setModel(model);
     setSizePolicy(QSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred));
     horizontalHeader()->setHighlightSections(false);
