@@ -1,4 +1,5 @@
 subdir('wav')
+subdir('flac')
 subdir('alsa')
 subdir('basic-gui')
 subdir('playlist-util')
