@@ -1,12 +1,23 @@
 #include "alsa-output.hpp"
 #include "config.h"
+#include "playback.hpp"
+#include "type.hpp"
 #include <alsa/error.h>
+#include <alsa/pcm.h>
+#include <mutex>
 
 #define TEST_ERROR(message)       \
     if(error < 0) {               \
         console.error << message; \
         break;                    \
     }
+
+namespace {
+void async_callback(snd_async_handler_t* async_handle) {
+    auto alsa_output = reinterpret_cast<AlsaOutput*>(snd_async_handler_get_callback_private(async_handle));
+    alsa_output->write_pcm_data();
+}
+} // namespace
 
 snd_pcm_format_t AlsaOutput::convert_alsa_format() {
     static const struct {
@@ -37,6 +48,24 @@ snd_pcm_format_t AlsaOutput::convert_alsa_format() {
         }
     }
     return SND_PCM_FORMAT_UNKNOWN;
+}
+bool AlsaOutput::write_packats(size_t frames) {
+    auto packet = get_buffer_pcm_packet(frames);
+    for(auto& p : packet) {
+        if(p.format != current_format) {
+            close_alsa_device();
+            current_format = get_buffer_pcm_format();
+            if(!init_alsa_device()) {
+                break;
+            }
+        }
+        auto error = snd_pcm_writei(playback_handle, p.pcm.data(), p.get_frames());
+        if(error < 0) {
+            console.error << "write failed (" << snd_strerror(error) << ").";
+            return false;
+        }
+    }
+    return true;
 }
 bool AlsaOutput::init_alsa_device() {
     snd_pcm_hw_params_t*  hw_params = nullptr;
@@ -112,6 +141,7 @@ bool AlsaOutput::init_alsa_device() {
         error = snd_pcm_prepare(playback_handle);
         TEST_ERROR("cannot prepare audio interface for use (" << snd_strerror(error) << ").");
 
+        error   = snd_async_add_pcm_handler(&async_handle.data, playback_handle, async_callback, this);
         success = true;
     } while(0);
 
@@ -139,55 +169,34 @@ void AlsaOutput::close_alsa_device() {
     playback_handle = nullptr;
 }
 void AlsaOutput::write_pcm_data() {
-    int               error;
-    snd_pcm_sframes_t frames_to_deliver;
-    while(!exit_loop) {
-        std::lock_guard<std::mutex> lock(playback_handle.lock);
-        if(playback_handle == nullptr) {
-            auto next_format = get_buffer_pcm_format();
-            if(next_format.sample_type == boxten::FORMAT_SAMPLE_TYPE::UNKNOWN) continue;
-            current_format = next_format;
-            if(!init_alsa_device()) {
-                break;
-            }
-        }
-        error = snd_pcm_wait(playback_handle, 300);
-        if(exit_loop) break;
+    std::lock_guard<std::mutex> lock(playback_handle.lock);
 
-        TEST_ERROR("poll failed (" << snd_strerror(error) << ").");
-        {
-            snd_pcm_sframes_t delay;
-            error = snd_pcm_delay(playback_handle, &delay);
-            TEST_ERROR("snd_pcm_delay failed (" << snd_strerror(error) << ").");
-            std::lock_guard<std::mutex> clock(calced_delay.lock);
-            calced_delay = delay;
-        }
-        frames_to_deliver = snd_pcm_avail_update(playback_handle);
-        if(frames_to_deliver < 0) {
-            if(frames_to_deliver == -EPIPE) {
-                console.error << "an xrun occured.";
-                break;
-            } else {
-                console.error << "unknown ALSA avail update return value (" << frames_to_deliver << ").";
-                break;
+    auto frames_to_deliver = snd_pcm_avail_update(playback_handle);
+    if(frames_to_deliver < 0) {
+        if(frames_to_deliver == -EPIPE) {
+            auto error = snd_pcm_prepare(playback_handle);
+            if(error < 0) {
+                console.error << "an xrun occured and failed to recover. " << snd_strerror(error);
+                boxten::stop_playback();
             }
-        }
-        frames_to_deliver = static_cast<u64>(frames_to_deliver) > boxten::PCMPACKET_PERIOD ? boxten::PCMPACKET_PERIOD : frames_to_deliver;
-
-        auto packet = get_buffer_pcm_packet(frames_to_deliver);
-        for(auto& p : packet) {
-            if(p.format != current_format) {
-                close_alsa_device();
-                current_format = get_buffer_pcm_format();
-                if(!init_alsa_device()) {
-                    break;
-                }
-            }
-            error = snd_pcm_writei(playback_handle, p.pcm.data(), p.get_frames());
-            TEST_ERROR("write failed (" << snd_strerror(error) << ").");
+        } else {
+            console.error << "unknown ALSA avail update return value (" << frames_to_deliver << ").";
         }
     }
-    boxten::stop_playback();
+
+    while(frames_to_deliver >= boxten::PCMPACKET_PERIOD) {
+        if(!write_packats(boxten::PCMPACKET_PERIOD)) return;
+        frames_to_deliver = snd_pcm_avail_update(playback_handle);
+    }
+    {
+        snd_pcm_sframes_t delay;
+        auto              error = snd_pcm_delay(playback_handle, &delay);
+        if(error < 0) {
+            console.error << "snd_pcm_delay failed (" << snd_strerror(error) << ").";
+        }
+        std::lock_guard<std::mutex> clock(calced_delay.lock);
+        calced_delay = delay;
+    }
 }
 boxten::n_frames AlsaOutput::output_delay() {
     std::lock_guard<std::mutex> lock(calced_delay.lock);
@@ -195,13 +204,14 @@ boxten::n_frames AlsaOutput::output_delay() {
 }
 void AlsaOutput::start_playback() {
     if(playback_handle != nullptr) return;
-    exit_loop = false;
-    loop      = boxten::Worker(std::bind(&AlsaOutput::write_pcm_data, this));
+    auto next_format = get_buffer_pcm_format();
+    current_format   = next_format;
+    if(!init_alsa_device()) {
+        console.error << "failed to init ALSA device.";
+    }
+    write_packats(boxten::PCMPACKET_PERIOD * 2);
 }
 void AlsaOutput::stop_playback() {
-    exit_loop = true;
-
-    loop.join();
     std::lock_guard<std::mutex> lock(playback_handle.lock);
     close_alsa_device();
 }
