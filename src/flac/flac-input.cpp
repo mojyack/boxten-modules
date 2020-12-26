@@ -1,15 +1,16 @@
 #include "flac-input.hpp"
+#include "console.hpp"
 #include "decoder.hpp"
 
 namespace{
-    Decoder* get_decoder(boxten::AudioFile& file){
+    Decoder* get_decoder(boxten::AudioFile& file, boxten::ConsoleSet& console){
         Decoder* decoder = reinterpret_cast<Decoder*>(file.get_private_data());
         if(decoder == nullptr){
-            decoder = new Decoder(file);
+            decoder = new Decoder(file, console);
             auto init_error = decoder->init();
             auto decode_meta_error = decoder->process_until_end_of_metadata();
             if(init_error != FLAC__STREAM_DECODER_INIT_STATUS_OK || !decode_meta_error) {
-                boxten::console << "failed to init FLAC decoder for: " << file.get_path();
+                console.error << "failed to init FLAC decoder for: " << file.get_path();
                 delete decoder;
                 decoder = nullptr;
             } else {
@@ -37,7 +38,7 @@ namespace{
 
 boxten::PCMPacketUnit FlacInput::read_frames(boxten::AudioFile& file, u64 from, boxten::n_frames frames) {
     boxten::PCMPacketUnit result;
-    auto decoder = get_decoder(file);
+    auto decoder = get_decoder(file, console);
     if(decoder == nullptr) return result;
     
     auto position = decoder->read_frames(from, frames, result.pcm);
@@ -55,7 +56,7 @@ boxten::AudioTag FlacInput::read_tags(boxten::AudioFile& file) {
     return result;
 }
 boxten::n_frames FlacInput::calc_total_frames(boxten::AudioFile& file) {
-    auto decoder = get_decoder(file);
+    auto decoder = get_decoder(file, console);
     if(decoder == nullptr) return 0;
 
     return decoder->get_total_samples();

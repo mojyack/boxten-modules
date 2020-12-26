@@ -62,15 +62,13 @@ FLAC__StreamDecoderReadStatus Decoder::read_callback(FLAC__byte buffer[], size_t
     return result;
 }
 FLAC__StreamDecoderSeekStatus Decoder::seek_callback(FLAC__uint64 absolute_byte_offset) {
-    auto&                         handle = file.get_handle();
-    FLAC__StreamDecoderSeekStatus result;
+    auto& handle = file.get_handle();
     if(!handle.seekg(absolute_byte_offset, std::ios_base::beg)) {
         throw std::runtime_error(get_state().as_cstring());
-        result = FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
+        return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
     } else {
-        result = FLAC__STREAM_DECODER_SEEK_STATUS_OK;
+        return FLAC__STREAM_DECODER_SEEK_STATUS_OK;
     }
-    return result;
 }
 FLAC__StreamDecoderTellStatus Decoder::tell_callback(FLAC__uint64* absolute_byte_offset) {
     auto& handle          = file.get_handle();
@@ -91,7 +89,7 @@ void Decoder::metadata_callback(const FLAC__StreamMetadata* metadata) {
     }
 }
 void Decoder::error_callback(FLAC__StreamDecoderErrorStatus status) {
-    boxten::console << "FLAC: libflac error: " << FLAC__StreamDecoderErrorStatusString[status];
+     console.error << "FLAC: libflac error: " << FLAC__StreamDecoderErrorStatusString[status];
 }
 
 uint64_t Decoder::read_frames(uint64_t from, boxten::n_frames frames, std::vector<uint8_t>& buffer) {
@@ -102,14 +100,14 @@ uint64_t Decoder::read_frames(uint64_t from, boxten::n_frames frames, std::vecto
     boxten::n_frames total_decoded = 0;
     if(auto pos = get_current_frame_pos(); !pos || pos.value() != from) {
         if(!seek_absolute(from)) {
-            boxten::console << "FLAC: seek out of range: " << from << std::endl;
+            console.error << "FLAC: seek out of range: " << from << std::endl;
         }
         total_decoded += byte_to_frames(this, write_callback_buffer->size()); // seek_absolute() decodes some samples
     }
 
     while(total_decoded < frames) {
         if(!process_single()) {
-            boxten::console << "FLAC: process_single() failed." << std::endl;
+            console.error << "FLAC: process_single() failed." << std::endl;
             break;
         }
         if(get_channels() == 0 || get_blocksize() == 0) {
@@ -124,4 +122,4 @@ boxten::n_frames        Decoder::get_total_frames() { return total_frames; }
 std::optional<uint64_t> Decoder::get_current_frame_pos() {
     return stream_position;
 }
-Decoder::Decoder(boxten::AudioFile& file) : file(file) {}
+Decoder::Decoder(boxten::AudioFile& file, boxten::ConsoleSet& console) : file(file), console(console) {}

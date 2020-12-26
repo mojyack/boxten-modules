@@ -1,4 +1,5 @@
 #pragma once
+#include "console.hpp"
 #include <optional>
 #include <vector>
 
@@ -13,6 +14,7 @@ class Decoder : public FLAC::Decoder::Stream {
     std::optional<uint64_t> stream_position;
     std::vector<uint8_t>*   write_callback_buffer = nullptr;
     boxten::n_frames        total_frames          = 0;
+    boxten::ConsoleSet&     console;
 
     FLAC__StreamDecoderWriteStatus  write_callback(const FLAC__Frame* frame, const FLAC__int32* const buffer[]) override;
     FLAC__StreamDecoderReadStatus   read_callback(FLAC__byte buffer[], size_t* bytes) override;
@@ -26,7 +28,7 @@ class Decoder : public FLAC::Decoder::Stream {
     uint64_t                read_frames(uint64_t from, boxten::n_frames frames, std::vector<uint8_t>& buffer);
     boxten::n_frames        get_total_frames();
     std::optional<uint64_t> get_current_frame_pos();
-    Decoder(boxten::AudioFile& file);
+    Decoder(boxten::AudioFile& file, boxten::ConsoleSet& console);
     Decoder(const Decoder&) = delete;
     Decoder(Decoder&&)      = delete;
     Decoder& operator=(const Decoder&) = delete;

@@ -109,7 +109,7 @@ PCMInfo* WavInput::get_pcm_info(boxten::AudioFile& file){
     if(pcm_info == nullptr) {
         PCMInfo pcm_info_tmp;
         if(!read_pcm_info(file.get_handle(), pcm_info_tmp)) {
-            boxten::console << "error while loading " << file.get_path().filename() << std::endl;
+            console.error << "error while loading " << file.get_path().filename() << std::endl;
             return nullptr;
         }
         pcm_info  = new PCMInfo;
