@@ -12,10 +12,20 @@
         break;                    \
     }
 
+void WriteQueue::proc(std::vector<AsyncCallbackCommands> queue) {
+    for(auto c : queue) {
+        switch(c) {
+        case AsyncCallbackCommands::Write:
+            owner.write_pcm_data();
+            break;
+        }
+    }
+}
+
 namespace {
 void async_callback(snd_async_handler_t* async_handle) {
     auto alsa_output = reinterpret_cast<AlsaOutput*>(snd_async_handler_get_callback_private(async_handle));
-    alsa_output->write_pcm_data();
+    alsa_output->add_queue();
 }
 } // namespace
 
@@ -26,7 +36,7 @@ snd_pcm_format_t AlsaOutput::convert_alsa_format() {
     } table[] =
         {
             {boxten::SampleType::f32_le, SND_PCM_FORMAT_FLOAT},
-         // {boxten::SampleType::f32_be, SND_PCM_FORMAT_FLOAT},
+            // {boxten::SampleType::f32_be, SND_PCM_FORMAT_FLOAT},
             {boxten::SampleType::s8, SND_PCM_FORMAT_S8},
             {boxten::SampleType::u8, SND_PCM_FORMAT_U8},
             {boxten::SampleType::s16_le, SND_PCM_FORMAT_S16_LE},
@@ -49,6 +59,9 @@ snd_pcm_format_t AlsaOutput::convert_alsa_format() {
         }
     }
     return SND_PCM_FORMAT_UNKNOWN;
+}
+void AlsaOutput::add_queue() {
+    write_queue.enqueue(AsyncCallbackCommands::Write);
 }
 bool AlsaOutput::write_packats(size_t frames) {
     auto packet = get_buffer_pcm_packet(frames);
@@ -142,7 +155,7 @@ bool AlsaOutput::init_alsa_device() {
         error = snd_pcm_prepare(playback_handle);
         TEST_ERROR("cannot prepare audio interface for use (" << snd_strerror(error) << ").");
 
-        error   = snd_async_add_pcm_handler(&async_handle.data, playback_handle, async_callback, this);
+        error = snd_async_add_pcm_handler(&async_handle.data, playback_handle, async_callback, this);
         TEST_ERROR("failed to add async handler (" << snd_strerror(error) << ").");
 
         success = true;
@@ -214,10 +227,12 @@ void AlsaOutput::start_playback() {
         console.error << "failed to init ALSA device.";
     }
     write_packats(boxten::PCMPACKET_PERIOD * 2);
+    write_queue.start();
 }
 void AlsaOutput::stop_playback() {
     std::lock_guard<std::mutex> lock(playback_handle.lock);
     close_alsa_device();
+    write_queue.finish();
 }
 void AlsaOutput::pause_playback() {
     snd_pcm_pause(playback_handle, 1);
