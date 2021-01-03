@@ -3,8 +3,10 @@
 
 #include <config.h>
 
+class Decoder;
 class FlacInput : public boxten::StreamInput {
   private:
+    Decoder* get_decoder(boxten::AudioFile& file);
 
   public:
     boxten::PCMPacketUnit read_frames(boxten::AudioFile& file, u64 from, boxten::n_frames frames) override;

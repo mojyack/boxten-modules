@@ -1,7 +1,7 @@
 #include "wav-input.hpp"
 #include "id3.hpp"
 
-namespace{
+namespace {
 struct FMT {
     u16 format;     // 0 = unknown  1 = PCM 3 = FLOAT
     u16 channels;   // 1 = mono  2 = steleo
@@ -12,7 +12,7 @@ struct FMT {
 };
 } // namespace
 
-bool WavInput::read_pcm_info(std::ifstream& handle, PCMInfo& pcm_info){
+bool WavInput::read_pcm_info(std::ifstream& handle, PCMInfo& pcm_info) {
     std::streampos riff_limit;
     { // check if file has RIFF chunk
         char riff_identifier[4] = {"\0"};
@@ -53,16 +53,16 @@ bool WavInput::read_pcm_info(std::ifstream& handle, PCMInfo& pcm_info){
             } else if(std::strncmp(chunk_identifier, "LIST", 4) == 0) {
                 char list_type[4];
                 handle.read(list_type, 4);
-                if(std::strncmp(list_type, "INFO", 4) == 0){
-                    pcm_info.info_pos = handle.tellg();
+                if(std::strncmp(list_type, "INFO", 4) == 0) {
+                    pcm_info.info_pos   = handle.tellg();
                     pcm_info.info_limit = chunk_limit - 4; // - 4 "INFO"
                 }
-            } else if(std::strncmp(chunk_identifier, "id3 ", 4) == 0){
+            } else if(std::strncmp(chunk_identifier, "id3 ", 4) == 0) {
                 pcm_info.id3_pos = current_pos;
             }
 
             handle.seekg(current_pos, std::ios_base::beg);
-            if(handle.tellg() + static_cast<std::streamoff>(chunk_limit) >= riff_limit){
+            if(handle.tellg() + static_cast<std::streamoff>(chunk_limit) >= riff_limit) {
                 break;
             } else {
                 handle.seekg(chunk_limit, std::ios_base::cur);
@@ -71,40 +71,40 @@ bool WavInput::read_pcm_info(std::ifstream& handle, PCMInfo& pcm_info){
         if(!format_chunk_found || !data_chunk_found) return false;
     }
 
-    pcm_info.format = boxten::FORMAT_SAMPLE_TYPE::UNKNOWN;
+    pcm_info.format = boxten::SampleType::unknown;
     switch(fmt.format) {
     case 1:
         switch(fmt.bitswidth) {
         case 8:
-            pcm_info.format = boxten::FORMAT_SAMPLE_TYPE::U8;
+            pcm_info.format = boxten::SampleType::u8;
             break;
         case 16:
-            pcm_info.format = boxten::FORMAT_SAMPLE_TYPE::S16_LE;
+            pcm_info.format = boxten::SampleType::s16_le;
             break;
         case 24:
-            pcm_info.format = boxten::FORMAT_SAMPLE_TYPE::S24_LE;
+            pcm_info.format = boxten::SampleType::s24_le;
             break;
         case 32:
-            pcm_info.format = boxten::FORMAT_SAMPLE_TYPE::S32_LE;
+            pcm_info.format = boxten::SampleType::s32_le;
             break;
         }
         break;
     case 3:
         switch(fmt.bitswidth) {
         case 32:
-            pcm_info.format = boxten::FORMAT_SAMPLE_TYPE::FLOAT;
+            pcm_info.format = boxten::SampleType::f32_le;
             break;
         }
         break;
     }
-    if(pcm_info.format == boxten::FORMAT_SAMPLE_TYPE::UNKNOWN) return false;
-    pcm_info.channels   = fmt.channels;
-    pcm_info.samplerate = fmt.samplerate;
+    if(pcm_info.format == boxten::SampleType::unknown) return false;
+    pcm_info.channels     = fmt.channels;
+    pcm_info.samplerate   = fmt.samplerate;
     pcm_info.total_frames = data_chunk_size / fmt.channels / (fmt.bitswidth / 8);
     return true;
 }
 
-PCMInfo* WavInput::get_pcm_info(boxten::AudioFile& file){
+PCMInfo* WavInput::get_pcm_info(boxten::AudioFile& file) {
     auto pcm_info = reinterpret_cast<PCMInfo*>(file.get_private_data());
     if(pcm_info == nullptr) {
         PCMInfo pcm_info_tmp;
@@ -114,7 +114,7 @@ PCMInfo* WavInput::get_pcm_info(boxten::AudioFile& file){
         }
         pcm_info  = new PCMInfo;
         *pcm_info = pcm_info_tmp;
-        file.set_private_data(pcm_info, [](void* pcm_info) {
+        file.set_private_data(pcm_info, this, [](void* pcm_info) {
             delete reinterpret_cast<PCMInfo*>(pcm_info);
         });
     }
@@ -123,14 +123,14 @@ PCMInfo* WavInput::get_pcm_info(boxten::AudioFile& file){
 
 boxten::PCMPacketUnit WavInput::read_frames(boxten::AudioFile& file, u64 from, boxten::n_frames frames) {
     boxten::PCMPacketUnit result;
-    auto pcm_info = get_pcm_info(file);
+    auto                  pcm_info = get_pcm_info(file);
     if(pcm_info == nullptr) return result;
 
     result.format.sample_type    = pcm_info->format;
     result.format.channels       = pcm_info->channels;
     result.format.sampling_rate  = pcm_info->samplerate;
-    u64 pcm_size                 = frames * result.format.get_bytewidth() * result.format.channels;
-    u64 pcm_offset               = from * result.format.get_bytewidth() * result.format.channels;
+    u64 pcm_size                 = frames * result.format.get_sample_bytewidth() * result.format.channels;
+    u64 pcm_offset               = from * result.format.get_sample_bytewidth() * result.format.channels;
     result.original_frame_pos[0] = from;
     result.original_frame_pos[1] = from + frames;
     result.pcm.resize(pcm_size);
@@ -184,7 +184,7 @@ boxten::AudioTag WavInput::read_tags(boxten::AudioFile& file) {
         }
         handle.seekg(next_chunk, std::ios_base::beg);
     }
-    if(pcm_info->id3_pos != -1){
+    if(pcm_info->id3_pos != -1) {
         std::vector<ID3Tag> id3_tags;
         handle.seekg(pcm_info->id3_pos, std::ios::beg);
         read_id3(handle, id3_tags);
@@ -212,7 +212,7 @@ boxten::AudioTag WavInput::read_tags(boxten::AudioFile& file) {
     }
     return result;
 }
-boxten::n_frames WavInput::calc_total_frames(boxten::AudioFile& file){
+boxten::n_frames WavInput::calc_total_frames(boxten::AudioFile& file) {
     auto pcm_info = get_pcm_info(file);
     return pcm_info->total_frames;
 }

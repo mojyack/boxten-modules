@@ -7,7 +7,7 @@
 #include <config.h>
 
 struct PCMInfo {
-    boxten::FORMAT_SAMPLE_TYPE format;
+    boxten::SampleType format;
     u32                        channels;
     u32                        samplerate;
 

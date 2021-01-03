@@ -21,25 +21,26 @@ void async_callback(snd_async_handler_t* async_handle) {
 
 snd_pcm_format_t AlsaOutput::convert_alsa_format() {
     static const struct {
-        boxten::FORMAT_SAMPLE_TYPE boxten_format;
-        snd_pcm_format_t           alsa_format;
+        boxten::SampleType boxten_format;
+        snd_pcm_format_t   alsa_format;
     } table[] =
         {
-            {boxten::FORMAT_SAMPLE_TYPE::FLOAT, SND_PCM_FORMAT_FLOAT},
-            {boxten::FORMAT_SAMPLE_TYPE::S8, SND_PCM_FORMAT_S8},
-            {boxten::FORMAT_SAMPLE_TYPE::U8, SND_PCM_FORMAT_U8},
-            {boxten::FORMAT_SAMPLE_TYPE::S16_LE, SND_PCM_FORMAT_S16_LE},
-            {boxten::FORMAT_SAMPLE_TYPE::S16_BE, SND_PCM_FORMAT_S16_BE},
-            {boxten::FORMAT_SAMPLE_TYPE::U16_LE, SND_PCM_FORMAT_U16_LE},
-            {boxten::FORMAT_SAMPLE_TYPE::U16_BE, SND_PCM_FORMAT_U16_BE},
-            {boxten::FORMAT_SAMPLE_TYPE::S24_LE, SND_PCM_FORMAT_S24_LE},
-            {boxten::FORMAT_SAMPLE_TYPE::S24_BE, SND_PCM_FORMAT_S24_BE},
-            {boxten::FORMAT_SAMPLE_TYPE::U24_LE, SND_PCM_FORMAT_U24_LE},
-            {boxten::FORMAT_SAMPLE_TYPE::U24_BE, SND_PCM_FORMAT_U24_BE},
-            {boxten::FORMAT_SAMPLE_TYPE::S32_LE, SND_PCM_FORMAT_S32_LE},
-            {boxten::FORMAT_SAMPLE_TYPE::S32_BE, SND_PCM_FORMAT_S32_BE},
-            {boxten::FORMAT_SAMPLE_TYPE::U32_LE, SND_PCM_FORMAT_U32_LE},
-            {boxten::FORMAT_SAMPLE_TYPE::U32_BE, SND_PCM_FORMAT_U32_BE},
+            {boxten::SampleType::f32_le, SND_PCM_FORMAT_FLOAT},
+         // {boxten::SampleType::f32_be, SND_PCM_FORMAT_FLOAT},
+            {boxten::SampleType::s8, SND_PCM_FORMAT_S8},
+            {boxten::SampleType::u8, SND_PCM_FORMAT_U8},
+            {boxten::SampleType::s16_le, SND_PCM_FORMAT_S16_LE},
+            {boxten::SampleType::s16_be, SND_PCM_FORMAT_S16_BE},
+            {boxten::SampleType::u16_le, SND_PCM_FORMAT_U16_LE},
+            {boxten::SampleType::u16_be, SND_PCM_FORMAT_U16_BE},
+            {boxten::SampleType::s24_le, SND_PCM_FORMAT_S24_LE},
+            {boxten::SampleType::s24_be, SND_PCM_FORMAT_S24_BE},
+            {boxten::SampleType::u24_le, SND_PCM_FORMAT_U24_LE},
+            {boxten::SampleType::u24_be, SND_PCM_FORMAT_U24_BE},
+            {boxten::SampleType::s32_le, SND_PCM_FORMAT_S32_LE},
+            {boxten::SampleType::s32_be, SND_PCM_FORMAT_S32_BE},
+            {boxten::SampleType::u32_le, SND_PCM_FORMAT_U32_LE},
+            {boxten::SampleType::u32_be, SND_PCM_FORMAT_U32_BE},
         };
 
     for(auto& f : table) {
@@ -54,7 +55,7 @@ bool AlsaOutput::write_packats(size_t frames) {
     for(auto& p : packet) {
         if(p.format != current_format) {
             close_alsa_device();
-            current_format = get_buffer_pcm_format();
+            current_format = p.format;
             if(!init_alsa_device()) {
                 break;
             }
@@ -142,6 +143,8 @@ bool AlsaOutput::init_alsa_device() {
         TEST_ERROR("cannot prepare audio interface for use (" << snd_strerror(error) << ").");
 
         error   = snd_async_add_pcm_handler(&async_handle.data, playback_handle, async_callback, this);
+        TEST_ERROR("failed to add async handler (" << snd_strerror(error) << ").");
+
         success = true;
     } while(0);
 
@@ -169,6 +172,7 @@ void AlsaOutput::close_alsa_device() {
     playback_handle = nullptr;
 }
 void AlsaOutput::write_pcm_data() {
+    std::lock_guard<std::mutex> alock(async_handle.lock);
     std::lock_guard<std::mutex> lock(playback_handle.lock);
 
     auto frames_to_deliver = snd_pcm_avail_update(playback_handle);
@@ -184,7 +188,7 @@ void AlsaOutput::write_pcm_data() {
         }
     }
 
-    while(frames_to_deliver >= boxten::PCMPACKET_PERIOD) {
+    while(static_cast<boxten::n_frames>(frames_to_deliver) >= boxten::PCMPACKET_PERIOD) {
         if(!write_packats(boxten::PCMPACKET_PERIOD)) return;
         frames_to_deliver = snd_pcm_avail_update(playback_handle);
     }
